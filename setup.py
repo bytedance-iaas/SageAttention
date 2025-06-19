@@ -78,7 +78,10 @@ for i in range(device_count):
 
 nvcc_cuda_version = get_nvcc_cuda_version(CUDA_HOME)
 if not compute_capabilities:
-    raise RuntimeError("No GPUs found. Please specify the target GPU architectures or build on a machine with GPUs.")
+    compute_capabilities.add("8.0")
+    compute_capabilities.add("8.6")
+    compute_capabilities.add("8.9")
+    compute_capabilities.add("9.0")
 else:
     print(f"Detect GPUs with compute capabilities: {compute_capabilities}")
 
@@ -112,13 +115,14 @@ for capability in compute_capabilities:
     elif capability.startswith("12.0"):
         HAS_SM120 = True
         num = "120" # need to use sm120a to use mxfp8/mxfp4/nvfp4 instructions.
-    NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
-    if capability.endswith("+PTX"):
-        NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
+    # NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
+    # if capability.endswith("+PTX"):
+    #     NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
 
 ext_modules = []
 
 if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
+    cflags = NVCC_FLAGS + ["-gencode", f"arch=compute_80,code=sm_80"]
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm80",
         sources=[
@@ -127,12 +131,13 @@ if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
         ],
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
+            "nvcc": cflags,
         },
     )
     ext_modules.append(qattn_extension)
 
 if HAS_SM89 or HAS_SM120:
+    cflags = NVCC_FLAGS + ["-gencode", f"arch=compute_89,code=sm_89"]
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm89",
         sources=[
@@ -141,12 +146,13 @@ if HAS_SM89 or HAS_SM120:
         ],
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
+            "nvcc": cflags,
         },
     )
     ext_modules.append(qattn_extension)
 
 if HAS_SM90:
+    cflags = NVCC_FLAGS + ["-gencode", f"arch=compute_90a,code=sm_90a"]
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm90",
         sources=[
@@ -155,7 +161,7 @@ if HAS_SM90:
         ],
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": NVCC_FLAGS,
+            "nvcc": cflags,
         },
         extra_link_args=['-lcuda'],
     )
@@ -167,20 +173,20 @@ fused_extension = CUDAExtension(
     sources=["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"],
     extra_compile_args={
         "cxx": CXX_FLAGS,
-        "nvcc": NVCC_FLAGS,
+        "nvcc": cflags,
     },
 )
 ext_modules.append(fused_extension)
 
 setup(
-    name='sageattention', 
-    version='2.1.1',  
+    name='sageattention',
+    version='2.1.1',
     author='SageAttention team',
-    license='Apache 2.0 License',  
-    description='Accurate and efficient plug-and-play low-bit attention.',  
-    long_description=open('README.md', encoding='utf-8').read(),  
-    long_description_content_type='text/markdown', 
-    url='https://github.com/thu-ml/SageAttention', 
+    license='Apache 2.0 License',
+    description='Accurate and efficient plug-and-play low-bit attention.',
+    long_description=open('README.md', encoding='utf-8').read(),
+    long_description_content_type='text/markdown',
+    url='https://github.com/thu-ml/SageAttention',
     packages=find_packages(),
     python_requires='>=3.9',
     ext_modules=ext_modules,
