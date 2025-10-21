@@ -28,10 +28,11 @@ HAS_SM80 = False
 HAS_SM86 = False
 HAS_SM89 = False
 HAS_SM90 = False
+HAS_SM100 = False
 HAS_SM120 = False
 
 # Supported NVIDIA GPU architectures.
-SUPPORTED_ARCHS = {"8.0", "8.6", "8.9", "9.0", "12.0"}
+SUPPORTED_ARCHS = {"8.0", "8.6", "8.9", "9.0", "10.0", "12.0"}
 
 # Compiler flags.
 CXX_FLAGS = ["-g", "-O3", "-fopenmp", "-lgomp", "-std=c++17", "-DENABLE_BF16"]
@@ -99,22 +100,34 @@ if nvcc_cuda_version < Version("12.8") and any(cc.startswith("12.0") for cc in c
         "CUDA 12.8 or higher is required for compute capability 12.0.")
 
 # Add target compute capabilities to NVCC flags.
+num = None
 for capability in compute_capabilities:
     if capability.startswith("8.0"):
         HAS_SM80 = True
+        num = "80"
     elif capability.startswith("8.6"):
         HAS_SM86 = True
+        num = "86"
     elif capability.startswith("8.9"):
         HAS_SM89 = True
+        num = "89"
     elif capability.startswith("9.0"):
         HAS_SM90 = True
+        num = "90a" # need to use sm90a instead of sm90 to use wgmma ptx instruction.
+    elif capability.startswith("10.0"):
+        HAS_SM100 = True
+        num = "100"
     elif capability.startswith("12.0"):
         HAS_SM120 = True
+        num = "120" # need to use sm120a to use mxfp8/mxfp4/nvfp4 instructions.
+    if num:
+        NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
+        if capability.endswith("+PTX"):
+            NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
 
 ext_modules = []
 
 if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
-    cflags = NVCC_FLAGS + ["-gencode", f"arch=compute_80,code=sm_80"]
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm80",
         sources=[
@@ -123,13 +136,12 @@ if HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120:
         ],
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": cflags,
+            "nvcc": NVCC_FLAGS,
         },
     )
     ext_modules.append(qattn_extension)
 
-if HAS_SM89 or HAS_SM120:
-    cflags = NVCC_FLAGS + ["-gencode", f"arch=compute_89,code=sm_89"]
+if HAS_SM89 or HAS_SM90 or HAS_SM100 or HAS_SM120:
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm89",
         sources=[
@@ -145,13 +157,12 @@ if HAS_SM89 or HAS_SM120:
         ],
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": cflags,
+            "nvcc": NVCC_FLAGS,
         },
     )
     ext_modules.append(qattn_extension)
 
 if HAS_SM90:
-    cflags = NVCC_FLAGS + ["-gencode", f"arch=compute_90a,code=sm_90a"]
     qattn_extension = CUDAExtension(
         name="sageattention._qattn_sm90",
         sources=[
@@ -160,24 +171,19 @@ if HAS_SM90:
         ],
         extra_compile_args={
             "cxx": CXX_FLAGS,
-            "nvcc": cflags,
+            "nvcc": NVCC_FLAGS,
         },
         extra_link_args=['-lcuda'],
     )
     ext_modules.append(qattn_extension)
 
 # Fused kernels.
-cflags = NVCC_FLAGS \
-        + ["-gencode", f"arch=compute_80,code=sm_80"] \
-        + ["-gencode", f"arch=compute_86,code=sm_86"] \
-        + ["-gencode", f"arch=compute_89,code=sm_89"] \
-        + ["-gencode", f"arch=compute_90a,code=sm_90a"]
 fused_extension = CUDAExtension(
     name="sageattention._fused",
     sources=["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"],
     extra_compile_args={
         "cxx": CXX_FLAGS,
-        "nvcc": cflags,
+        "nvcc": NVCC_FLAGS,
     },
 )
 ext_modules.append(fused_extension)
@@ -221,8 +227,8 @@ class BuildExtensionSeparateDir(BuildExtension):
 
 
 setup(
-    name='sageattention', 
-    version='2.2.0',  
+    name='sageattention',
+    version='2.2.0',
     author='SageAttention team',
     license='Apache 2.0 License',
     description='Accurate and efficient plug-and-play low-bit attention.',
